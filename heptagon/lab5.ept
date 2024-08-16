@@ -1,0 +1,255 @@
+const waitSteps:int = 400
+
+const maxSen0:int = 772
+const maxSen1:int = 879
+const maxSen2:int = 789
+const maxSen3:int = 766
+const maxSen4:int = 941
+
+const minSen0:int = 290
+const minSen1:int = 360
+const minSen2:int = 320
+const minSen3:int = 310
+const minSen4:int = 415
+
+const w0 : int = 14
+const w1 : int = 28
+
+const full : int = 8400
+const half : int = 4200
+
+--needs more calibration
+const lineUpThres :int = 1000
+const lineDownThres :int = -1000
+
+const leftThres :int = -800
+const rightThres :int = 800
+
+const midThres :int = 400
+const maxVal :int = 1024
+
+const lengthOfParking :int = 895
+const parkingRadius :int = 730
+const hardTurn :int = 260
+
+
+--get normal values
+node getNormal(sen0, sen1, sen2, sen3, sen4: int) returns (b0,b1,b2,b3,b4:int)
+	let
+		b0=if((sen0-minSen0)<0) then 0 else (1000*(sen0-minSen0))/(maxSen0-minSen0);
+		b1=if((sen1-minSen1)<0) then 0 else (1000*(sen1-minSen1))/(maxSen1-minSen1);
+		b2=if((sen2-minSen2)<0) then 0 else (1000*(sen2-minSen2))/(maxSen2-minSen2);
+		b3=if((sen3-minSen3)<0) then 0 else (1000*(sen3-minSen3))/(maxSen3-minSen3);
+		b4=if((sen4-minSen4)<0) then 0 else (1000*(sen4-minSen4))/(maxSen4-minSen4);
+
+	tel
+--get normal values for back line
+node getNormalBlack(sen0, sen1, sen2, sen3, sen4: int) returns (b0,b1,b2,b3,b4:int)
+	let
+		b0=if((sen0-minSen0)<0) then 1000 else 1030-(1000*(sen0-minSen0))/(maxSen0-minSen0);
+		b1=if((sen1-minSen1)<0) then 1000 else 1030-(1000*(sen1-minSen1))/(maxSen1-minSen1);
+		b2=if((sen2-minSen2)<0) then 1000 else 1030-(1000*(sen2-minSen2))/(maxSen2-minSen2);
+		b3=if((sen3-minSen3)<0) then 1000 else 1030-(1000*(sen3-minSen3))/(maxSen3-minSen3);
+		b4=if((sen4-minSen4)<0) then 1000 else 1030-(1000*(sen4-minSen4))/(maxSen4-minSen4);
+
+	tel
+--main node 
+node main(sen0, sen1, sen2, sen3, sen4, startPos: int; leftIR, rightIR:bool) returns (v_l, v_r, dir: int)
+
+var
+ last count:int=0;	--for counting square block
+ last trn:bool=false;
+ last leftFull:bool=false;
+ last rightFull:bool=false;
+ last totalSteps:int=0;
+let
+	automaton
+		state WhiteLineInit
+		var b0,b1,b2,b3,b4:int;
+		do
+			(b0,b1,b2,b3,b4)=getNormal(sen0, sen1, sen2, sen3, sen4);
+			v_l=50;
+			v_r=50;
+			dir=1;
+		until (b0 < midThres and b4 < midThres and (b1 >midThres or b2 > midThres or b3 > midThres)) then FollowLine
+		
+		state FollowLine 	
+		var b0,b1,b2,b3,b4,x:int;
+		do
+			totalSteps=last totalSteps+1;
+			(b0,b1,b2,b3,b4)=getNormal(sen0, sen1, sen2, sen3, sen4);
+			x=(-w1*(b0) -w0*(b1) + 0*(b2) + w0*(b3) +w1*(b4))/(10);
+			v_l=((half-x)*100)/full;
+			v_r=((half+x)*100)/full;
+			dir=1;
+			--check for transtion condition
+			trn=if( totalSteps>6000 and ( b0 > midThres or b4 > midThres)) then true else false;
+		until	
+			trn then InitBlackLine
+		| (x< lineDownThres and (b1 > midThres or b2 >midThres or b3> midThres)) then Left
+		| (x> lineUpThres and (b1 > midThres or b2 >midThres or b3> midThres)) then Right
+		| not  (b1 > midThres or b2 >midThres or b3> midThres) then Backward
+
+		state Left 
+		var b0,b1,b2,b3,b4,x:int;
+		do
+			(b0,b1,b2,b3,b4)=getNormal(sen0, sen1, sen2, sen3, sen4);
+			x=(-w1*(b0) -w0*(b1) + 0*(b2) + w0*(b3) +w1*(b4))/(10);
+			v_l=40;
+			v_r=30;
+			dir=2;
+		until
+		 (x > leftThres and (b1 > midThres or b2 >midThres or b3> midThres)) then FollowLine
+		| not  (b1 > midThres or b2 >midThres or b3> midThres) then Backward
+
+
+		state Right 
+		var b0,b1,b2,b3,b4,x:int;
+		do
+			(b0,b1,b2,b3,b4)=getNormal(sen0, sen1, sen2, sen3, sen4);
+			x=(-w1*(b0) -w0*(b1) + 0*(b2) + w0*(b3) +w1*(b4))/(10);
+			v_l=30;
+			v_r=40;
+			dir=3;
+		until 
+		 (x< rightThres and (b1 > midThres or b2 >midThres or b3> midThres)) then FollowLine
+		| not  (b1 > midThres or b2 >midThres or b3> midThres) then Backward
+
+		state Backward
+		var b0,b1,b2,b3,b4:int;
+		do
+			(b0,b1,b2,b3,b4)=getNormal(sen0, sen1, sen2, sen3, sen4);
+			v_l=100;
+			v_r=100;
+			dir=4;
+		until (b1 > midThres or b2 >midThres or b3> midThres) then FollowLine
+		
+-- ************** BLACK line starts****************
+		state InitBlackLine
+		var steps:int;
+		do
+			steps=0->pre(steps)+1;
+			v_l=100;
+			v_r=100;
+			dir=1;
+		 until steps>50 then FollowBlackLine
+
+		state FollowBlackLine 	
+		var b0,b1,b2,b3,b4,x:int;
+		do
+			(b0,b1,b2,b3,b4)=getNormalBlack(sen0, sen1, sen2, sen3, sen4);
+			x=(-w1*(b0) -w0*(b1) + 0*(b2) + w0*(b3) +w1*(b4))/(10);
+			v_l=((half-x)*100)/full;
+			v_r=((half+x)*100)/full;
+			dir=1;
+		until
+			((b0 > midThres and b1 >midThres and b2 > midThres) or
+			(b0 > midThres and b1 > midThres and b2 >midThres and b3 > midThres) or
+			(b1 > midThres and b2 > midThres and b3 >midThres and b4 > midThres) or 
+			(b1 > midThres and b2 > midThres and b3 >midThres) or
+			(b2 > midThres and b3 > midThres and b4 >midThres)) then Block
+		
+		state Block
+		do
+			v_l=50;
+			v_r=50;
+			dir=1;
+			count=last count +1;
+		until (count=1 and (startPos=0 or startPos=2)) then HardLeft
+		| (count=1) then HardRight
+		| (count=2 and (startPos=0 or startPos=1)) then HardRight
+		| (count=2) then HardLeft
+		| ((count=3 or count=4) and (startPos=0 or startPos=1)) then HardLeft
+		| ((count=3 or count=4)) then HardRight
+		| (count=5) then ForwardBlack
+
+
+
+		state HardLeft
+		var b0,b1,b2,b3,b4,steps:int;
+		do
+			steps=0->pre(steps)+1;
+			(b0,b1,b2,b3,b4)=getNormalBlack(sen0, sen1, sen2, sen3, sen4);
+			v_l=50;
+			v_r=10;
+			dir=1;
+		until (steps>hardTurn and b3>midThres) then FollowBlackLine
+
+		state HardRight
+		var b0,b1,b2,b3,b4,steps:int;
+		do
+			steps=0->pre(steps)+1;
+			(b0,b1,b2,b3,b4)=getNormalBlack(sen0, sen1, sen2, sen3, sen4);
+			v_l=10;
+			v_r=50;
+			dir=1;
+		until (steps>hardTurn and b1>midThres) then FollowBlackLine
+
+		
+-- ************** PARKING STARTS ****************
+
+		state ForwardBlack
+		var steps:int;
+		do
+			steps=0->pre(steps)+1;
+			v_l=50;
+			v_r=50;
+			dir=1;
+		until (steps>100) then DetectObsticles
+		
+
+		state DetectObsticles
+		var b0,b1,b2,b3,b4,x,steps:int;
+		do
+			steps=0->pre(steps)+1;
+			(b0,b1,b2,b3,b4)=getNormalBlack(sen0, sen1, sen2, sen3, sen4);
+			x=(-w1*(b0) -w0*(b1) + 0*(b2) + w0*(b3) +w1*(b4))/(10);
+			v_l=((half-x)*80)/full;
+			v_r=((half+x)*80)/full;
+			dir=1;
+			leftFull=(last leftFull) or leftIR;
+			rightFull=(last rightFull) or rightIR;
+		until
+			 (steps > lengthOfParking and not leftFull) then LeftPark
+			| (steps > lengthOfParking and not rightFull) then RightPark
+			| (steps > lengthOfParking) then NextParkingBlock
+			| (b0 < midThres and b1 < midThres and b2 < midThres and b3 < midThres and b4 < midThres) then Stop
+		
+			
+		state NextParkingBlock
+		var steps:int;
+		do
+			steps=0->pre(steps)+1;
+			v_l=0;
+			v_r=0;
+			dir=5;
+			leftFull=false;
+			rightFull=false;
+		until steps>waitSteps then DetectObsticles
+
+
+		state LeftPark
+		var steps:int;
+		do
+			v_l=55;
+			v_r=30;
+			dir=4;
+			steps=0->pre(steps)+1;
+		until steps>parkingRadius then Stop
+
+		state RightPark
+		var steps:int;
+		do
+			v_l=30;
+			v_r=60;
+			dir=4;
+			steps=0->pre(steps)+1;
+		until steps>parkingRadius then Stop
+
+		state Stop
+		do
+			v_l=0;
+			v_r=0;
+			dir=5;
+	end
+tel

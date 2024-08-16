@@ -1,0 +1,194 @@
+const maxSen0:int = 772
+const maxSen1:int = 879
+const maxSen2:int = 789
+const maxSen3:int = 766
+const maxSen4:int = 941
+
+const minSen0:int = 290
+const minSen1:int = 360
+const minSen2:int = 320
+const minSen3:int = 310
+const minSen4:int = 415
+
+const w0 : int = 14
+const w1 : int = 28
+
+const full : int = 8400
+const half : int = 4200
+
+--needs more calibration
+const lineUpThres :int = 1000
+const lineDownThres :int = -1000
+
+const leftThres :int = -800
+const rightThres :int = 800
+
+const midThres :int = 400
+const maxVal :int = 1024
+
+--get normal values
+node getNormal(sen0, sen1, sen2, sen3, sen4: int) returns (b0,b1,b2,b3,b4:int)
+	let
+		b0=if((sen0-minSen0)<0) then 0 else (1000*(sen0-minSen0))/(maxSen0-minSen0);
+		b1=if((sen1-minSen1)<0) then 0 else (1000*(sen1-minSen1))/(maxSen1-minSen1);
+		b2=if((sen2-minSen2)<0) then 0 else (1000*(sen2-minSen2))/(maxSen2-minSen2);
+		b3=if((sen3-minSen3)<0) then 0 else (1000*(sen3-minSen3))/(maxSen3-minSen3);
+		b4=if((sen4-minSen4)<0) then 0 else (1000*(sen4-minSen4))/(maxSen4-minSen4);
+
+	tel
+--get normal values for back line
+node getNormalBlack(sen0, sen1, sen2, sen3, sen4: int) returns (b0,b1,b2,b3,b4:int)
+	let
+		b0=if((sen0-minSen0)<0) then 1000 else 1030-(1000*(sen0-minSen0))/(maxSen0-minSen0);
+		b1=if((sen1-minSen1)<0) then 1000 else 1030-(1000*(sen1-minSen1))/(maxSen1-minSen1);
+		b2=if((sen2-minSen2)<0) then 1000 else 1030-(1000*(sen2-minSen2))/(maxSen2-minSen2);
+		b3=if((sen3-minSen3)<0) then 1000 else 1030-(1000*(sen3-minSen3))/(maxSen3-minSen3);
+		b4=if((sen4-minSen4)<0) then 1000 else 1030-(1000*(sen4-minSen4))/(maxSen4-minSen4);
+
+	tel
+--main node 
+node main(sen0, sen1, sen2, sen3, sen4: int) returns (v_l, v_r, dir: int)
+
+var
+ last trn:bool=false;
+ last count:int=0;
+let	
+	automaton
+		state WhitlLineFollower
+		do
+		automaton
+			state FollowLine 	
+			var b0,b1,b2,b3,b4,x:int;
+			do
+				(b0,b1,b2,b3,b4)=getNormal(sen0, sen1, sen2, sen3, sen4);
+				x=(-w1*(b0) -w0*(b1) + 0*(b2) + w0*(b3) +w1*(b4))/(10);
+				v_l=((half-x)*100)/full;
+				v_r=((half+x)*100)/full;
+				dir=1;
+				trn=if(b0> midThres and (b1 > midThres or b2 < midThres or b3> midThres) and b4> midThres) then true else false;
+			until
+			 (x< lineDownThres and (b1 > midThres or b2 >midThres or b3> midThres)) then Left
+			| (x> lineUpThres and (b1 > midThres or b2 >midThres or b3> midThres)) then Right
+			| not  (b1 > midThres or b2 >midThres or b3> midThres) then Backward
+			
+
+			state Left 
+			var b0,b1,b2,b3,b4,x:int;
+			do
+				(b0,b1,b2,b3,b4)=getNormal(sen0, sen1, sen2, sen3, sen4);
+				x=(-w1*(b0) -w0*(b1) + 0*(b2) + w0*(b3) +w1*(b4))/(10);
+				v_l=40;
+				v_r=0;
+				dir=2;
+			until (x > leftThres and (b1 > midThres or b2 >midThres or b3> midThres)) then FollowLine
+			| not  (b1 > midThres or b2 >midThres or b3> midThres) then Backward
+
+
+			state Right 
+			var b0,b1,b2,b3,b4,x:int;
+			do
+				(b0,b1,b2,b3,b4)=getNormal(sen0, sen1, sen2, sen3, sen4);
+				x=(-w1*(b0) -w0*(b1) + 0*(b2) + w0*(b3) +w1*(b4))/(10);
+				v_l=0;
+				v_r=40;
+				dir=3;
+			until (x< rightThres and (b1 > midThres or b2 >midThres or b3> midThres)) then FollowLine
+			| not  (b1 > midThres or b2 >midThres or b3> midThres) then Backward
+
+			state Backward
+			var b0,b1,b2,b3,b4,x:int;
+			do
+				(b0,b1,b2,b3,b4)=getNormal(sen0, sen1, sen2, sen3, sen4);
+				x=(-w1*(b0) -w0*(b1) + 0*(b2) + w0*(b3) +w1*(b4))/(10);
+				v_l=100;
+				v_r=100;
+				dir=4;
+			until (b1 > midThres or b2 >midThres or b3> midThres) then FollowLine
+			
+		end
+		unless last trn then FollowBlackLine
+
+(*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*)
+
+		state FollowBlackLine 	
+		var b0,b1,b2,b3,b4,x:int;
+		do
+			(b0,b1,b2,b3,b4)=getNormalBlack(sen0, sen1, sen2, sen3, sen4);
+			x=(-w1*(b0) -w0*(b1) + 0*(b2) + w0*(b3) +w1*(b4))/(10);
+			v_l=((half-x)*100)/full;
+			v_r=((half+x)*100)/full;
+			dir=1;
+		until
+			((b0 > midThres and b1 >midThres and b2 > midThres) or
+			(b0 > midThres and b1 > midThres and b2 >midThres and b3 > midThres) or
+			(b1 > midThres and b2 > midThres and b3 >midThres and b4 > midThres) or 
+			(b1 > midThres and b2 > midThres and b3 >midThres) or
+			(b2 > midThres and b3 > midThres and b4 >midThres)) then Block
+		| (x< lineDownThres and (b1 > midThres or b2 >midThres or b3> midThres)) then Left
+		| (x> lineUpThres and (b1 > midThres or b2 >midThres or b3> midThres)) then Right
+			
+		state Block
+		do
+			v_l=10;
+			v_r=10;
+			dir=4;
+			count=last count +1;
+
+		until (count=1 or count = 2 or count = 3) then HardLeft
+		| (count = 2) then HardRight
+		| (count >4) then FollowBlackLine 
+
+		state HardLeft
+		var b0,b1,b2,b3,b4:int;
+		do
+			(b0,b1,b2,b3,b4)=getNormalBlack(sen0, sen1, sen2, sen3, sen4);
+			v_l=50;
+			v_r=10;
+			dir=2;
+		until (b0<midThres and b3>midThres and b4 < midThres) then FollowBlackLine
+
+		state HardRight
+		var b0,b1,b2,b3,b4:int;
+		do
+			(b0,b1,b2,b3,b4)=getNormalBlack(sen0, sen1, sen2, sen3, sen4);
+			v_l=10;
+			v_r=50;
+			dir=3;
+		until (b0<midThres and b2>midThres and b4 < midThres) then FollowBlackLine
+
+		
+		state Left 
+		var b0,b1,b2,b3,b4,x:int;
+		do
+			(b0,b1,b2,b3,b4)=getNormalBlack(sen0, sen1, sen2, sen3, sen4);
+			x=(-w1*(b0) -w0*(b1) + 0*(b2) + w0*(b3) +w1*(b4))/(10);
+			v_l=40;
+			v_r=0;
+			dir=2;
+		until (x > leftThres and (b1 > midThres or b2 >midThres or b3> midThres)) then FollowBlackLine
+		| not  (b1 > midThres or b2 >midThres or b3> midThres) then Backward
+
+
+		state Right 
+		var b0,b1,b2,b3,b4,x:int;
+		do
+			(b0,b1,b2,b3,b4)=getNormalBlack(sen0, sen1, sen2, sen3, sen4);
+			x=(-w1*(b0) -w0*(b1) + 0*(b2) + w0*(b3) +w1*(b4))/(10);
+			v_l=0;
+			v_r=40;
+			dir=3;
+		until (x< rightThres and (b1 > midThres or b2 >midThres or b3> midThres)) then FollowBlackLine
+		| not  (b1 > midThres or b2 >midThres or b3> midThres) then Backward
+
+		state Backward
+		var b0,b1,b2,b3,b4,x:int;
+		do
+			(b0,b1,b2,b3,b4)=getNormalBlack(sen0, sen1, sen2, sen3, sen4);
+			x=(-w1*(b0) -w0*(b1) + 0*(b2) + w0*(b3) +w1*(b4))/(10);
+			v_l=100;
+			v_r=100;
+			dir=4;
+		until (b1 > midThres or b2 >midThres or b3> midThres) then FollowBlackLine
+			
+	end
+tel
